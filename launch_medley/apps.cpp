@@ -11,13 +11,16 @@
 #include <QDir>
 
 MedleyApp *MedleyApp::app = nullptr;
+Config *MedleyApp::config = nullptr;
 
-MedleyApp::MedleyApp(int &argc, char **argv)
+MedleyApp::MedleyApp(int &argc, char **argv) :
+      argv0(QString(argv[0]))
+    , env(QProcessEnvironment())
+    , ldeEnv(QProcessEnvironment(env))
+    , medleyDir(QDir())
+    , isGuiApp(false)
+    , isMacOSBundle(false)
 {
-    argv0 = QString(argv[0]);
-    env = QProcessEnvironment();
-    ldeEnv = QProcessEnvironment(env);
-    medleyDir=QDir();
     MedleyApp::app = this;
 }
 
@@ -53,13 +56,13 @@ void MedleyApp::figureOutDirectories()
         }
         if(invokeFi != nullptr) {
             QString mdPath;
-            mdPath = isMedleyDir(invokeFi->path());
+            mdPath = figureOutMedleyDir(invokeFi->path());
             if(!mdPath.isNull())
                 medleyDir = QDir(mdPath);
             else if(invokeFi->isSymLink()) {
                 QFileInfo targetFi;
                 targetFi = QFileInfo(invokeFi->symLinkTarget());
-                mdPath = isMedleyDir(targetFi.path());
+                mdPath = figureOutMedleyDir(targetFi.path());
                 if(!mdPath.isNull())
                     medleyDir = QDir(mdPath);
             }
@@ -68,20 +71,32 @@ void MedleyApp::figureOutDirectories()
     }
     if(medleyDir.dirName().isEmpty())
         throw("Unable to find MedleyDir");
-    ldeEnv.insert("MEDLEYDIR", medleyDir.absolutePath());
 
     // LOGINDIR
     if(QFileInfo(medleyDir.absolutePath()).isWritable())
         defaultLoginDir = QDir(medleyDir.absolutePath() + "/il");
     else
         defaultLoginDir = QDir(QDir::homePath() + "/il");
+
+    // GREET FILE
+    defaultGreetFile = medleyDir.absolutePath() + "/greetfiles/MEDLEYDIR-INIT";
+    if(!QFileInfo(defaultGreetFile).isReadable())
+        defaultGreetFile = QStringLiteral("~none");
+
 }
 
-QString MedleyApp::isMedleyDir(QString path) {
-    QFileInfo fi = QFileInfo(path + "/../lispusers");
+QString MedleyApp::figureOutMedleyDir(QString invokePath) {
+    QFileInfo fi = QFileInfo(invokePath + "/../lispusers");
     if(fi.exists() && fi.isDir())
-        return QDir::cleanPath(QDir(path).absolutePath());
-    else return QString();
+        return QDir::cleanPath(QDir(invokePath + "/../").absolutePath());
+    else {
+        fi = QFileInfo(invokePath + "/../../");
+        if (fi.isBundle()) {
+            isMacOSBundle = true;
+            return fi.absolutePath() + "/Resources/medley";
+        }
+        else return QString();
+    }
 }
 
 QString MedleyApp::searchEnvPathForExec(QString execName) {
@@ -158,7 +173,7 @@ int Application::startApp()
     figureOutDirectories();
     config = readConfigFile();
 
-    MainWindow w(this, config);
+    MainWindow w;
     w.show();
     return exec();
 }

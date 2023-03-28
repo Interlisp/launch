@@ -19,7 +19,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(Application *app, Config *config, QWidget *parent = nullptr);
+    MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 private slots:
@@ -53,8 +53,6 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    Config *config;
-    Application* app;
 
     void updateConfig(QCheckBox *CB, QLineEdit *LE, std::optional<QString> &configField);
     void updateConfig(QCheckBox *CB, QLineEdit *LE, QPushButton *BB, std::optional<QString> &configField);

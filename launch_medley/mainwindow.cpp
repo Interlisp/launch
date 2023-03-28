@@ -8,11 +8,9 @@
 #include <QMessageBox>
 #include <QStringList>
 
-MainWindow::MainWindow(Application *app, Config *config, QWidget *parent)
+MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , config(config)
-    , app(app)
 {
     ui->setupUi(this);
     connectUI();
@@ -75,8 +73,8 @@ void MainWindow::connectUI()
 
 void MainWindow::resetUI() {
 
-    Config* save_config = config;
-    config = new Config();
+    Config* save_config = MedleyApp::config;
+    MedleyApp::config = new Config();
 
     QList<QCheckBox *> CBs = findChildren<QCheckBox *>();
     for(auto cb : CBs) {
@@ -119,14 +117,17 @@ void MainWindow::resetUI() {
             pb->setDisabled(true);
     }
 
-    delete config;
-    config = save_config;
+    delete MedleyApp::config;
+    MedleyApp::config = save_config;
 }
 
 //
 //   Configure the ui according to the current Config object
 //
 void MainWindow::configureUI() {
+
+    MedleyApp *app = MedleyApp::app;
+    Config *config = MedleyApp::config;
 
     if(config->interlisp_exec.has_value() && config->interlisp_exec.value()) {
         ui->InterlispExecCB->setChecked(true);
@@ -251,7 +252,7 @@ void MainWindow::ResumeCB_stateChanged(int arg1)
         ui->SysoutPathLE->setDisabled(is_checked);
     }
     ui->CustomSysoutButton->setDisabled(is_checked);
-    if(is_checked) config->sysout = QStringLiteral("~resume");
+    if(is_checked) MedleyApp::config->sysout = QStringLiteral("~resume");
 }
 
 void MainWindow::StartFromSysoutCB_stateChanged(int arg1)
@@ -269,11 +270,13 @@ void MainWindow::AppsSysoutRB_toggled(bool checked)
 
 void MainWindow::InterlispExecCB_stateChanged(int arg1) {
     bool is_checked = ui->InterlispExecCB->isChecked();
-    config->interlisp_exec = is_checked;
+    MedleyApp::config->interlisp_exec = is_checked;
 };
 
 void MainWindow::updateSysout()
 {
+    Config *config = MedleyApp::config;
+
     if(ui->AppsSysoutRB->isChecked()) {
         config->sysout = QStringLiteral("~apps");
         if(ui->InterlispExecCB->isChecked())
@@ -311,15 +314,15 @@ void MainWindow::CustomSysoutButton_clicked()
 
 void MainWindow::updateId()
 {
-    updateConfig(ui->IdCB, ui->IdLE, config->id);
+    updateConfig(ui->IdCB, ui->IdLE, MedleyApp::config->id);
 }
 
 void MainWindow::NoScrollCB_stateChanged(int arg1)
 {
     if(ui->NoScrollCB->isChecked())
-        config->noscroll = true;
+        MedleyApp::config->noscroll = true;
     else
-        config->noscroll.reset();
+        MedleyApp::config->noscroll.reset();
     updateGeometry();
     updateScreenSize();
 }
@@ -337,17 +340,17 @@ void MainWindow::GeoCB_stateChanged(int arg1)
 void MainWindow::updateGeometry()
 {
     if(ui->GeoCB->isChecked())
-        config->geometry =
+        MedleyApp::config->geometry =
             QString::number(ui->GeoWidthSB->value())
             + QStringLiteral("x")
             + QString::number(ui->GeoHeightSB->value())
             ;
-    else config->geometry.reset();
+    else MedleyApp::config->geometry.reset();
 }
 
 void MainWindow::updateWidthandHeightSBs()
 {
-    Config::Geometries geometries = config->figureOutGeometries();
+    Config::Geometries geometries = MedleyApp::config->figureOutGeometries();
     ui->GeoWidthSB->setValue(geometries.gw);
     ui->GeoHeightSB->setValue(geometries.gh);
     ui->ScreenSizeWidthSB->setValue(geometries.sw);
@@ -367,32 +370,32 @@ void MainWindow::ScreenSizeCB_stateChanged(int arg1)
 void MainWindow::updateScreenSize()
 {
     if(ui->ScreenSizeCB->isChecked())
-        config->screensize =
+        MedleyApp::config->screensize =
             QString::number(ui->ScreenSizeWidthSB->value())
             + QStringLiteral("x")
             + QString::number(ui->ScreenSizeHeightSB->value())
             ;
-    else config->screensize.reset();
+    else MedleyApp::config->screensize.reset();
 }
 
 void MainWindow::updateTitle()
 {
-    updateConfig(ui->TitleCB, ui->TitleLE, config->title);
+    updateConfig(ui->TitleCB, ui->TitleLE, MedleyApp::config->title);
 }
 
 void MainWindow::updateDisplay()
 {
-    updateConfig(ui->DisplayCB, ui->DisplayLE, config->display);
+    updateConfig(ui->DisplayCB, ui->DisplayLE, MedleyApp::config->display);
 }
 
 void MainWindow::updateMemory()
 {
-    updateConfig(ui->MemoryCB, ui->MemorySB, config->mem);
+    updateConfig(ui->MemoryCB, ui->MemorySB, MedleyApp::config->mem);
 }
 
 void MainWindow::updateVmemFile()
 {
-    updateConfig(ui->VmemFileCB, ui->VmemFileLE, ui->VmemFileButton, config->vmem);
+    updateConfig(ui->VmemFileCB, ui->VmemFileLE, ui->VmemFileButton, MedleyApp::config->vmem);
 }
 
 void MainWindow::VmemFileButton_clicked()
@@ -401,13 +404,13 @@ void MainWindow::VmemFileButton_clicked()
         QFileDialog::getOpenFileName(this, tr("Select Vmem File"), "/home", tr("*.vmem"));
     if(!fileName.isEmpty()) {
         ui->VmemFileLE->setText(fileName);
-        updateConfig(ui->VmemFileCB, ui->VmemFileLE, ui->VmemFileButton, config->vmem);
+        updateConfig(ui->VmemFileCB, ui->VmemFileLE, ui->VmemFileButton, MedleyApp::config->vmem);
     }
 }
 
 void MainWindow::updateGreetFile()
 {
-    updateConfig(ui->GreetFileCB, ui->GreetFileLE, ui->GreetFileButton, config->greet);
+    updateConfig(ui->GreetFileCB, ui->GreetFileLE, ui->GreetFileButton, MedleyApp::config->greet);
 }
 
 void MainWindow::GreetFileButton_clicked()
@@ -416,13 +419,13 @@ void MainWindow::GreetFileButton_clicked()
         QFileDialog::getOpenFileName(this, tr("Select Greet (INIT) File"), "/home", tr("*"));
     if(!fileName.isEmpty()) {
         ui->GreetFileLE->setText(fileName);
-        updateConfig(ui->GreetFileCB, ui->GreetFileLE, ui->GreetFileButton, config->greet);
+        updateConfig(ui->GreetFileCB, ui->GreetFileLE, ui->GreetFileButton, MedleyApp::config->greet);
     }
 }
 
 void MainWindow::updateLoginDir()
 {
-    updateConfig(ui->LoginDirCB, ui->LoginDirLE, ui->LoginDirButton, config->logindir);
+    updateConfig(ui->LoginDirCB, ui->LoginDirLE, ui->LoginDirButton, MedleyApp::config->logindir);
 }
 
 void MainWindow::LoginDirButton_clicked()
@@ -436,20 +439,20 @@ void MainWindow::LoginDirButton_clicked()
             | QFileDialog::DontResolveSymlinks);
     if(!dir.isEmpty()) {
         ui->LoginDirLE->setText(dir);
-        updateConfig(ui->LoginDirCB, ui->LoginDirLE, ui->LoginDirButton, config->logindir);
+        updateConfig(ui->LoginDirCB, ui->LoginDirLE, ui->LoginDirButton, MedleyApp::config->logindir);
     }
 }
 
 void MainWindow::SaveButton_clicked()
 {
-    ConfigFile().writeConfig(config);
+    ConfigFile().writeConfig(MedleyApp::config);
 }
 
 
 void MainWindow::ResetButton_clicked()
 {
-    Config *old_config = config;
-    config = new Config();
+    Config *old_config = MedleyApp::config;
+    MedleyApp::config = new Config();
     resetUI();
     delete old_config;
 }
@@ -457,8 +460,8 @@ void MainWindow::ResetButton_clicked()
 void MainWindow::RestoreButton_clicked()
 {
     QStringList *argList = ConfigFile().readConfig();
-    delete config;
-    config = new Config(argList);
+    delete MedleyApp::config;
+    MedleyApp::config = new Config(argList);
     delete argList;
     resetUI();
     configureUI();

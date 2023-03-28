@@ -17,20 +17,22 @@ public:
     ~MedleyApp();
     Config *readConfigFile();
     void figureOutDirectories();
-    QString isMedleyDir(QString path);
+    QString figureOutMedleyDir(QString invokePath);
     QString searchEnvPathForExec(QString execName);
 
     QProcessEnvironment env;
     QString argv0;
-    Config *config;
     bool isGuiApp;
+    bool isMacOSBundle;
     QDir medleyDir;
     QDir defaultLoginDir;
+    QString defaultGreetFile;
     QDir invokeDir;
     QDir InvokeName;
     QProcessEnvironment ldeEnv;
 
     static MedleyApp *app;
+    static Config *config;
 };
 
 class CoreApplication: public MedleyApp, public QCoreApplication

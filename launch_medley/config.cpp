@@ -506,15 +506,21 @@ void Config::prepareConfigForRunMedley()
         }
     }
 
-    if(greet.has_value()) {
-        QFileInfo fi = QFileInfo(greet.value());
-        if(! (fi.exists() && fi.isFile() && fi.isReadable())) {
-            QMessageBox::information(
-                0,
-                "error",
-                QStringLiteral("Greet (INIT) file (%1) either doesn't exist, is a directory, or is not readable.").arg(greet.value())
-            );
-            return false;
+    {
+        if(!greet.has_value())
+            greet = MedleyApp::app->defaultGreetFile;
+        QString gv = greet.value();
+        if(gv == QStringLiteral("~none"))
+            greet.reset();
+        else {
+            QFileInfo fi = QFileInfo(greet.value());
+            if(!fi.exists()) {
+                throw(QStringLiteral("Greet (INIT) file (%1) does not existd").arg(gv));
+            } else if (!fi.isFile()) {
+                throw(QStringLiteral("Greet (INIT) file (%1) exists, but is a directory or other non-regular file").arg(gv));
+            } else if (!fi.isReadable()) {
+                throw(QStringLiteral("Greet (INIT) file (%1) exists, but is not readable").arg(gv));
+            }
         }
     }
 
