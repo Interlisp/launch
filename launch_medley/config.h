@@ -22,6 +22,7 @@ class Config
 public:
     Config();
     Config(QStringList *argList, bool fromConfigFile = false);
+    Config(Config &config);
     ~Config();
     void processArgList(QStringList *argList, bool fromConfigFile);
     void toTextStream(QTextStream &out, QChar separator);
@@ -72,6 +73,7 @@ public:
 
     static QRegularExpression re_xOrX;
     static QRegularExpression re_WxH;
+    static QRegularExpression re_ExceptAlphaNum;
 
 private:
     static QStringList sysoutTildes;

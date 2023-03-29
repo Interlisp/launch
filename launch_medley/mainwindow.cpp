@@ -6,6 +6,7 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QErrorMessage>
 #include <QStringList>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -29,8 +30,8 @@ MainWindow::~MainWindow()
 //
 void MainWindow::connectUI()
 {
-    connect(ui->ResumeCB,           SIGNAL(stateChanged(int)), this, SLOT(ResumeCB_stateChanged(int)));
-    connect(ui->StartFromSysoutCB,  SIGNAL(stateChanged(int)), this, SLOT(StartFromSysoutCB_stateChanged(int)));
+    connect(ui->RunMedleyButton,    SIGNAL(clicked()),         this, SLOT(RunMedleyButton_clicked()));
+    connect(ui->ResumeRB,           SIGNAL(toggled(bool)),     this, SLOT(updateSysout()));
     connect(ui->AppsSysoutRB,       SIGNAL(toggled(bool)),     this, SLOT(AppsSysoutRB_toggled(bool)));
     connect(ui->InterlispExecCB,    SIGNAL(stateChanged(int)), this, SLOT(InterlispExecCB_stateChanged(int)));
     connect(ui->FullSysoutRB,       SIGNAL(toggled(bool)),     this, SLOT(updateSysout()));
@@ -55,12 +56,14 @@ void MainWindow::connectUI()
     connect(ui->VmemFileCB,         SIGNAL(stateChanged(int)), this, SLOT(updateVmemFile()));
     connect(ui->VmemFileLE,         SIGNAL(editingFinished()), this, SLOT(updateVmemFile()));
     connect(ui->VmemFileButton,     SIGNAL(clicked()),         this, SLOT(VmemFileButton_clicked()));
-    connect(ui->GreetFileCB,        SIGNAL(stateChanged(int)), this, SLOT(updateGreetFile()));
-    connect(ui->GreetFileLE,        SIGNAL(editingFinished()), this, SLOT(updateGreetFile()));
-    connect(ui->GreetFileButton,    SIGNAL(clicked()),         this, SLOT(GreetFileButton_clicked()));
     connect(ui->LoginDirCB,         SIGNAL(stateChanged(int)), this, SLOT(updateLoginDir()));
     connect(ui->LoginDirLE,         SIGNAL(editingFinished()), this, SLOT(updateLoginDir()));
     connect(ui->LoginDirButton,     SIGNAL(clicked()),         this, SLOT(ResetButton_clicked()));
+    connect(ui->GreetDefaultRB,     SIGNAL(toggled(bool)),     this, SLOT(updateGreetFile()));
+    connect(ui->GreetCustomRB,      SIGNAL(toggled(bool)),     this, SLOT(updateGreetFile()));
+    connect(ui->GreetNoneRB,        SIGNAL(toggled(bool)),     this, SLOT(updateGreetFile()));
+    connect(ui->GreetFileLE,        SIGNAL(editingFinished()), this, SLOT(updateGreetFile()));
+    connect(ui->GreetFileButton,    SIGNAL(clicked()),         this, SLOT(GreetFileButton_clicked()));
     connect(ui->ResetButton,        SIGNAL(clicked()),         this, SLOT(ResetButton_clicked()));
     connect(ui->SaveButton,         SIGNAL(clicked()),         this, SLOT(SaveButton_clicked()));
     connect(ui->RestoreButton,      SIGNAL(clicked()),         this, SLOT(RestoreButton_clicked()));
@@ -80,7 +83,7 @@ void MainWindow::resetUI() {
     for(auto cb : CBs) {
         cb->setChecked(false);
     }
-    ui->ResumeCB->setChecked(true);
+    ui->ResumeRB->setChecked(true);
     ui->InterlispExecCB->setDisabled(true);
 
     QList<QRadioButton *> RBs = findChildren<QRadioButton *>();
@@ -117,7 +120,7 @@ void MainWindow::resetUI() {
             pb->setDisabled(true);
     }
 
-    delete MedleyApp::config;
+    if(MedleyApp::config != nullptr) delete MedleyApp::config;
     MedleyApp::config = save_config;
 }
 
@@ -133,31 +136,29 @@ void MainWindow::configureUI() {
         ui->InterlispExecCB->setChecked(true);
     }
 
+
     if(config->sysout.has_value()) {
         QString sysout = config->sysout.value();
         if ((sysout == QStringLiteral("~resume")) || (sysout == QStringLiteral("~default")))
-            ui->ResumeCB->setChecked(true);
+            ui->ResumeRB->setChecked(true);
         else if (sysout == QStringLiteral("~apps")) {
-            ui->StartFromSysoutCB->setChecked(true);
             ui->AppsSysoutRB->setChecked(true);
         }
         else if (sysout == QStringLiteral("~full")) {
-            ui->StartFromSysoutCB->setChecked(true);
             ui->FullSysoutRB->setChecked(true);
         }
         else if (sysout == QStringLiteral("~lisp")) {
-            ui->StartFromSysoutCB->setChecked(true);
             ui->LispSysoutRB->setChecked(true);
         }
         else {
             ui->SysoutPathLE->setText(config->sysout.value());
-            ui->StartFromSysoutCB->setChecked(true);
             ui->CustomSysoutRB->setChecked(true);
         };
     }
     else {
-        ui->ResumeCB->setChecked(true);
+        ui->ResumeRB->setChecked(true);
     }
+    updateSysoutDependantUI();
 
     if(config->id.has_value()) {
         ui->IdLE->setText(config->id.value());
@@ -219,8 +220,15 @@ void MainWindow::configureUI() {
     }
 
     if(config->greet.has_value()) {
-        ui->GreetFileLE->setText(config->greet.value());
-        ui->GreetFileCB->setChecked(true);
+        QString gv = config->greet.value();
+        if(gv == QStringLiteral("~none"))
+            ui->GreetNoneRB->setChecked(true);
+        else if(gv == QStringLiteral("~default"))
+            ui->GreetDefaultRB->setChecked(true);
+        else {
+            ui->GreetFileLE->setText(gv);
+            ui->GreetCustomRB->setChecked(true);
+        }
     }
 
     if(config->logindir.has_value()) {
@@ -237,29 +245,13 @@ void MainWindow::configureUI() {
 //  between the various widgets.
 //
 
-void MainWindow::ResumeCB_stateChanged(int arg1)
+void MainWindow::RunMedleyButton_clicked()
 {
-    bool is_checked = ui->ResumeCB->isChecked();
-    ui->StartFromSysoutCB->setChecked(!is_checked);
-    ui->AppsSysoutRB->setDisabled(is_checked);
-    if (ui->AppsSysoutRB->isChecked()) {
-        ui->InterlispExecCB->setDisabled(is_checked);
+    try {
+        MedleyApp::app->runMedley();
+    } catch(QString err_msg) {
+        QErrorMessage(this).showMessage(err_msg);
     }
-    ui->FullSysoutRB->setDisabled(is_checked);
-    ui->LispSysoutRB->setDisabled(is_checked);
-    ui->CustomSysoutRB->setDisabled(is_checked);
-    if (ui->CustomSysoutRB->isChecked()) {
-        ui->SysoutPathLE->setDisabled(is_checked);
-    }
-    ui->CustomSysoutButton->setDisabled(is_checked);
-    if(is_checked) MedleyApp::config->sysout = QStringLiteral("~resume");
-}
-
-void MainWindow::StartFromSysoutCB_stateChanged(int arg1)
-{
-    bool is_checked = ui->StartFromSysoutCB->isChecked();
-    ui->ResumeCB->setChecked(!is_checked);
-    if(is_checked) updateSysout();
 }
 
 void MainWindow::AppsSysoutRB_toggled(bool checked)
@@ -277,24 +269,33 @@ void MainWindow::updateSysout()
 {
     Config *config = MedleyApp::config;
 
-    if(ui->AppsSysoutRB->isChecked()) {
-        config->sysout = QStringLiteral("~apps");
-        if(ui->InterlispExecCB->isChecked())
-            config->interlisp_exec = true;
-        else config->interlisp_exec.reset();
-    }
+    if(ui->ResumeRB->isChecked())
+        config->sysout = QStringLiteral("~resume");
 
-    if(ui->FullSysoutRB->isChecked())
+    else if(ui->AppsSysoutRB->isChecked())
+        config->sysout = QStringLiteral("~apps");
+
+    else if(ui->FullSysoutRB->isChecked())
         config->sysout = QStringLiteral("~full");
 
-    if(ui->LispSysoutRB->isChecked())
+    else if(ui->LispSysoutRB->isChecked())
         config->sysout = QStringLiteral("~lisp");
 
-    if(ui->CustomSysoutRB->isChecked()) {
+    else if(ui->CustomSysoutRB->isChecked()) {
         QString t = ui->SysoutPathLE->text();
         if(!t.isNull() && !t.isEmpty())
             config->sysout = ui->SysoutPathLE->text();
+        else config->sysout = QStringLiteral("~resume");
     }
+    updateSysoutDependantUI();
+}
+
+void MainWindow::updateSysoutDependantUI() {
+    if(ui->AppsSysoutRB->isChecked())
+        ui->GreetDefaultLabel->setText(MedleyApp::app->greetFileApps);
+    else
+        ui->GreetDefaultLabel->setText(MedleyApp::app->greetFileDefault);
+    ui->GreetGB->setDisabled(ui->ResumeRB->isChecked());
 }
 
 void MainWindow::CustomSysoutRB_toggled(bool checked)
@@ -410,7 +411,24 @@ void MainWindow::VmemFileButton_clicked()
 
 void MainWindow::updateGreetFile()
 {
-    updateConfig(ui->GreetFileCB, ui->GreetFileLE, ui->GreetFileButton, MedleyApp::config->greet);
+    Config *config = MedleyApp::config;
+
+    if(ui->GreetDefaultRB->isChecked())
+        config->greet = QStringLiteral("~default");
+
+    else if(ui->GreetNoneRB->isChecked())
+        config->greet = QStringLiteral("~none");
+
+    else if(ui->GreetCustomRB->isChecked()) {
+        QString t = ui->GreetFileLE->text();
+        if(!t.isNull() && !t.isEmpty())
+            config->greet = ui->GreetFileLE->text();
+        else config->greet = QStringLiteral("~default");
+    }
+
+    bool is_checked = ui->GreetCustomRB->isChecked();
+    ui->GreetFileLE->setDisabled(!is_checked);
+    ui->GreetFileButton->setDisabled(!is_checked);
 }
 
 void MainWindow::GreetFileButton_clicked()
@@ -419,7 +437,7 @@ void MainWindow::GreetFileButton_clicked()
         QFileDialog::getOpenFileName(this, tr("Select Greet (INIT) File"), "/home", tr("*"));
     if(!fileName.isEmpty()) {
         ui->GreetFileLE->setText(fileName);
-        updateConfig(ui->GreetFileCB, ui->GreetFileLE, ui->GreetFileButton, MedleyApp::config->greet);
+        updateGreetFile();
     }
 }
 

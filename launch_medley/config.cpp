@@ -9,7 +9,7 @@
 QStringList Config::sysoutTildes = QStringList("~apps") << "~full" << "~lisp" << "~resume" << "~default";
 QRegularExpression Config::re_xOrX = QRegularExpression("[xX]");
 QRegularExpression Config::re_WxH = QRegularExpression("^[0-9]+[Xx][0-9]+$");
-
+QRegularExpression Config::re_ExceptAlphaNum = QRegularExpression("[^0-9a-zA-Z]");
 
 Config::Config() : Config(nullptr, false){
 
@@ -66,6 +66,28 @@ Config::Config(QStringList *argList, bool fromConfigFile) {
 
     if(argList)
         processArgList(argList, fromConfigFile);
+
+}
+
+Config::Config(Config &config) {
+
+    background = config.background;
+    save_config = false;
+    display = config.display;
+    interlisp_exec = config.interlisp_exec;
+    geometry = config.geometry;
+    id = config.id;
+    vmem = config.vmem;
+    mem = config.mem;
+    noscroll = config.noscroll;
+    greet = config.greet;
+    port = config.port;
+    screensize = config.screensize;
+    title = config.title;
+    vnc = config.vnc;
+    wsl = config.wsl;
+    logindir = config.logindir;
+    sysout = config.sysout;
 
 }
 
@@ -336,7 +358,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
 void Config::toTextStream(QTextStream &out, QChar separator) {
 
     if(this->background.has_value() && this->background.value()) {
-        out << "--backgroud" << separator;
+        out << "--background" << separator;
         out.flush();
     }
 
@@ -441,7 +463,7 @@ void Config::prepareConfigForRunMedley()
                 tmp_qdir.cdUp();
                 id = tmp_qdir.dirName();
             }
-            id = id.value().remove(QRegularExpression("[^0-9a-zA-Z]"));
+            id = id.value().remove(re_ExceptAlphaNum);
         }
     }
     {
@@ -460,16 +482,39 @@ void Config::prepareConfigForRunMedley()
     }
 
     {
+        if(!greet.has_value() || (greet.value() == QStringLiteral("~default"))) {
+            if(sysout.has_value() && (sysout == QStringLiteral("~apps")))
+                greet = MedleyApp::app->greetFileApps;
+            else greet = MedleyApp::app->greetFileDefault;
+        } else {
+            QString gv = greet.value();
+            if(gv == QStringLiteral("~none"))
+                greet = MedleyApp::app->greetFileNoGreet;
+            else {
+                QFileInfo fi = QFileInfo(gv);
+                if(!fi.exists()) {
+                    throw(QStringLiteral("Greet (INIT) file (%1) does not exist").arg(gv));
+                } else if (!fi.isFile()) {
+                    throw(QStringLiteral("Greet (INIT) file (%1) exists, but is a directory or other non-regular file").arg(gv));
+                } else if (!fi.isReadable()) {
+                    throw(QStringLiteral("Greet (INIT) file (%1) exists, but is not readable").arg(gv));
+                }
+            }
+        }
+    }
+
+    {
         if(!sysout.has_value())
             sysout = QStringLiteral("~full");
         QString sv = sysout.value();
-        if(sysoutTildes.contains(sysout.value())) {
+        QString mdpath = MedleyApp::app->medleyDir.absolutePath();
+        if(sysoutTildes.contains(sv)) {
             if(sv == QStringLiteral("~apps"))
-                    sysout = QString();
+                    sysout = mdpath + "/loadups/apps.sysout" ;
             else if(sv == QStringLiteral("~full"))
-                    sysout = QString();
+                    sysout = mdpath + "/loadups/full.sysout";
             else if(sv == QStringLiteral("~lisp"))
-                    sysout = QString();
+                    sysout = mdpath + "/loadups/lisp.sysout";
             else if(sv == QStringLiteral("~resume"))
                 sysout = QDir(logindir.value()).absolutePath()
                          + "/vmem/lisp"
@@ -506,23 +551,6 @@ void Config::prepareConfigForRunMedley()
         }
     }
 
-    {
-        if(!greet.has_value())
-            greet = MedleyApp::app->defaultGreetFile;
-        QString gv = greet.value();
-        if(gv == QStringLiteral("~none"))
-            greet.reset();
-        else {
-            QFileInfo fi = QFileInfo(greet.value());
-            if(!fi.exists()) {
-                throw(QStringLiteral("Greet (INIT) file (%1) does not existd").arg(gv));
-            } else if (!fi.isFile()) {
-                throw(QStringLiteral("Greet (INIT) file (%1) exists, but is a directory or other non-regular file").arg(gv));
-            } else if (!fi.isReadable()) {
-                throw(QStringLiteral("Greet (INIT) file (%1) exists, but is not readable").arg(gv));
-            }
-        }
-    }
 
 
     figureOutGeometries(true);

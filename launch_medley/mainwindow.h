@@ -1,7 +1,6 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include "apps.h"
 #include "config.h"
 #include <QMainWindow>
 #include <QRegularExpression>
@@ -24,11 +23,11 @@ public:
 
 private slots:
 
-    void ResumeCB_stateChanged(int arg1);
-    void StartFromSysoutCB_stateChanged(int arg1);
+    void RunMedleyButton_clicked();
     void AppsSysoutRB_toggled(bool checked);
     void InterlispExecCB_stateChanged(int arg1);
     void updateSysout();
+    void updateSysoutDependantUI();
     void CustomSysoutRB_toggled(bool checked);
     void CustomSysoutButton_clicked();
     void updateId();

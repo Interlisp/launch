@@ -3,20 +3,23 @@
 #include "ConfigFile.h"
 #include "mainwindow.h"
 
+#include <cstdlib>
 #include <QtGlobal>
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QProcess>
 #include <QDir>
+#include <QSysInfo>
+#include <QErrorMessage>
 
 MedleyApp *MedleyApp::app = nullptr;
 Config *MedleyApp::config = nullptr;
+Config *MedleyApp::runConfig = nullptr;
 
 MedleyApp::MedleyApp(int &argc, char **argv) :
       argv0(QString(argv[0]))
     , env(QProcessEnvironment())
-    , ldeEnv(QProcessEnvironment(env))
     , medleyDir(QDir())
     , isGuiApp(false)
     , isMacOSBundle(false)
@@ -72,16 +75,35 @@ void MedleyApp::figureOutDirectories()
     if(medleyDir.dirName().isEmpty())
         throw("Unable to find MedleyDir");
 
+    //MAIKODIR
+    if(!isMacOSBundle) {
+        QString maikoPath = figureOutMaikoDir(medleyDir.absolutePath());
+        if(maikoPath.isNull())
+            throw(505); // QStringLiteral("Unable to find Maiko directory")
+        maikoDir = QDir(maikoPath);
+        maikoExecDir = QDir(testMaikoExecDir(maikoPath));
+    } else {
+        maikoDir = QDir(medleyDir.absolutePath() + "/../../MacOS/maiko");
+        maikoDir.makeAbsolute();
+        maikoExecDir = QDir(maikoDir);
+    }
+
     // LOGINDIR
     if(QFileInfo(medleyDir.absolutePath()).isWritable())
         defaultLoginDir = QDir(medleyDir.absolutePath() + "/il");
     else
         defaultLoginDir = QDir(QDir::homePath() + "/il");
 
-    // GREET FILE
-    defaultGreetFile = medleyDir.absolutePath() + "/greetfiles/MEDLEYDIR-INIT";
-    if(!QFileInfo(defaultGreetFile).isReadable())
-        defaultGreetFile = QStringLiteral("~none");
+    // GREET FILES
+    greetFileNoGreet = medleyDir.absolutePath() + "/greetfiles/NOGREET";
+    if(!QFileInfo(greetFileNoGreet).isReadable())
+        throw(QStringLiteral("NoGreet INIT file (%1) either doesn't exist or is not readable").arg(greetFileNoGreet));
+    greetFileDefault = medleyDir.absolutePath() + "/greetfiles/MEDLEYDIR_INIT";
+    if(!QFileInfo(greetFileDefault).isReadable())
+        greetFileDefault = greetFileNoGreet;
+    greetFileApps = medleyDir.absolutePath() + "/greetfiles/APPS-INIT";
+    if(!QFileInfo(greetFileApps).isReadable())
+        greetFileApps = greetFileDefault;
 
 }
 
@@ -111,6 +133,89 @@ QString MedleyApp::searchEnvPathForExec(QString execName) {
     }
     return QString();
 }
+
+QString MedleyApp::figureOutMaikoDir(QString medleyDir) {
+    QString maikoDirCandidate = medleyDir + "/maiko";
+    QFileInfo fi = QFileInfo(maikoDirCandidate);
+    if(fi.exists() && fi.isDir() && testMaikoExecDir(maikoDirCandidate).isNull())
+        return QDir::cleanPath(QDir(maikoDirCandidate).absolutePath());
+    else {
+        maikoDirCandidate = medleyDir + "/../maiko";
+        fi = QFileInfo(maikoDirCandidate);
+        if(fi.exists() && fi.isDir() && !testMaikoExecDir(maikoDirCandidate).isNull())
+            return QDir::cleanPath(QDir(maikoDirCandidate).absolutePath());
+        else return QString();
+    }
+}
+
+QString MedleyApp::testMaikoExecDir(QString maikoDirCandidate) {
+    QDir dir = QDir(maikoDirCandidate + "/" + osversion() + "." + machinetype());
+    if (dir.exists() && dir.exists("lde") && dir.exists("ldex"))
+        return dir.absolutePath();
+    else return QString();
+}
+
+
+
+void MedleyApp::runMedley() {
+
+    Config *save = MedleyApp::runConfig;
+    MedleyApp::runConfig = new Config(*MedleyApp::config);
+    if(save != nullptr) delete save;
+    Config *config = MedleyApp::runConfig;
+
+    config->prepareConfigForRunMedley();
+
+    QProcess lde;
+    QProcessEnvironment ldeEnv = QProcessEnvironment(env);
+    QStringList ldeArgs;
+    QString ldePath = maikoExecDir.absolutePath() + "/lde";
+
+    ldeEnv.insert("MEDLEYDIR", medleyDir.absolutePath());
+    ldeEnv.insert("MAIKODIR", maikoDir.absolutePath());
+    ldeEnv.insert("LOGINDIR", config->logindir.value());
+    ldeEnv.insert("LDESRCESYSOUT", config->sysout.value());
+    ldeEnv.insert("LDEDESTSYSOUT", config->vmem.value());
+    ldeEnv.insert("LDEINIT", config->greet.value());
+    if(config->display.has_value()) ldeEnv.insert("DISPLAY", config->display.value());
+    ldeEnv.insert("LDEKBDTYPE", "x");
+    lde.setProcessEnvironment(ldeEnv);
+
+    ldeArgs << "-g" << config->geometry.value();
+    ldeArgs << "-sc" << config->screensize.value();
+    if(config->noscroll.has_value() && config->noscroll.value())
+        ldeArgs << "-noscroll";
+    if(config->title.has_value())
+        ldeArgs << "-title" << config->title.value();
+    if(config->mem.has_value())
+        ldeArgs << "-m" << QString::number(config->mem.value());
+    config->sysout.value();
+    lde.setArguments(ldeArgs);
+
+    lde.setProgram(ldePath);
+
+    lde.start();
+
+}
+
+QString MedleyApp::osversion()
+{
+#ifdef Q_OS_MACOS
+    return QStringLiteral("darwin");
+#endif
+#ifdef Q_OS_LINUX
+    return QStringLiteral("linux");
+#endif
+#ifdef Q_OS_WINDOWS
+    return QStringLiteral("win");
+#endif
+}
+
+QString MedleyApp::machinetype()
+{
+   return QSysInfo::currentCpuArchitecture();
+}
+
 
 
 CoreApplication::CoreApplication(int &argc, char **argv): MedleyApp(argc, argv), QCoreApplication(argc, argv)
@@ -169,12 +274,21 @@ Application::~Application()
 
 int Application::startApp()
 {
-
-    figureOutDirectories();
-    config = readConfigFile();
-
-    MainWindow w;
-    w.show();
+    //QString err = QString();
+    int err = -1;
+    try {
+        figureOutDirectories();
+        config = readConfigFile();
+    } catch(int err_msg) {
+        err = err_msg;
+        QErrorMessage().showMessage(QString::number(err));
+        std::exit(1);
+    }
+    mainWindow = new MainWindow();
+    mainWindow->show();
+    if(err > 0) {
+        QErrorMessage(mainWindow).showMessage(QString::number(err));
+    }
     return exec();
 }
 
