@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QSysInfo>
 #include <QErrorMessage>
+#include <QMessageBox>
 
 MedleyApp *MedleyApp::app = nullptr;
 Config *MedleyApp::config = nullptr;
@@ -79,7 +80,7 @@ void MedleyApp::figureOutDirectories()
     if(!isMacOSBundle) {
         QString maikoPath = figureOutMaikoDir(medleyDir.absolutePath());
         if(maikoPath.isNull())
-            throw(505); // QStringLiteral("Unable to find Maiko directory")
+            throw(QStringLiteral("Unable to find Maiko directory"));
         maikoDir = QDir(maikoPath);
         maikoExecDir = QDir(testMaikoExecDir(maikoPath));
     } else {
@@ -275,20 +276,17 @@ Application::~Application()
 int Application::startApp()
 {
     //QString err = QString();
-    int err = -1;
+    QString err = QString();
     try {
         figureOutDirectories();
         config = readConfigFile();
-    } catch(int err_msg) {
+    } catch(QString err_msg) {
         err = err_msg;
-        QErrorMessage().showMessage(QString::number(err));
+        QMessageBox::critical(nullptr, "Error", err);
         std::exit(1);
     }
     mainWindow = new MainWindow();
     mainWindow->show();
-    if(err > 0) {
-        QErrorMessage(mainWindow).showMessage(QString::number(err));
-    }
     return exec();
 }
 
