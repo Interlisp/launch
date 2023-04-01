@@ -74,6 +74,7 @@ public:
     static QRegularExpression re_xOrX;
     static QRegularExpression re_WxH;
     static QRegularExpression re_ExceptAlphaNum;
+    static QRegularExpression re_VersionedFile;
 
 private:
     static QStringList sysoutTildes;

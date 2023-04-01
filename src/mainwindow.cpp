@@ -250,7 +250,8 @@ void MainWindow::RunMedleyButton_clicked()
     try {
         MedleyApp::app->runMedley();
     } catch(QString err_msg) {
-        QErrorMessage(this).showMessage(err_msg);
+        QMessageBox::critical(nullptr, "Error", err_msg);
+        ;
     }
 }
 

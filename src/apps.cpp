@@ -1,6 +1,6 @@
 #include "apps.h"
 #include "config.h"
-#include "ConfigFile.h"
+#include "configfile.h"
 #include "mainwindow.h"
 
 #include <cstdlib>
@@ -13,6 +13,7 @@
 #include <QSysInfo>
 #include <QErrorMessage>
 #include <QMessageBox>
+#include <QFileInfo>
 
 MedleyApp *MedleyApp::app = nullptr;
 Config *MedleyApp::config = nullptr;
@@ -24,6 +25,9 @@ MedleyApp::MedleyApp(int &argc, char **argv) :
     , medleyDir(QDir())
     , isGuiApp(false)
     , isMacOSBundle(false)
+    , greetFileDefault(QString())
+    , greetFileNoGreet(QString())
+    , greetFileApps(QString())
 {
     MedleyApp::app = this;
 }
@@ -96,16 +100,28 @@ void MedleyApp::figureOutDirectories()
         defaultLoginDir = QDir(QDir::homePath() + "/il");
 
     // GREET FILES
-    greetFileNoGreet = medleyDir.absolutePath() + "/greetfiles/NOGREET";
-    if(!QFileInfo(greetFileNoGreet).isReadable())
-        throw(QStringLiteral("NoGreet INIT file (%1) either doesn't exist or is not readable").arg(greetFileNoGreet));
-    greetFileDefault = medleyDir.absolutePath() + "/greetfiles/MEDLEYDIR_INIT";
-    if(!QFileInfo(greetFileDefault).isReadable())
-        greetFileDefault = greetFileNoGreet;
-    greetFileApps = medleyDir.absolutePath() + "/greetfiles/APPS-INIT";
-    if(!QFileInfo(greetFileApps).isReadable())
+    QDir greetfilesDir = QDir(medleyDir.absolutePath() + "/greetfiles");
+    if(!greetfilesDir.exists())
+        throw(QStringLiteral("greetfiles subdirectory of MEDLEYDIR (%1) does not exist"));
+    greetfilesDir.setFilter(QDir::Files | QDir::Readable);
+    greetfilesDir.setSorting(QDir::Type);
+    QFileInfoList greetfiles = greetfilesDir.entryInfoList();
+    for(auto& fi : greetfiles) {
+        if(fi.fileName().contains(Config::re_VersionedFile)) continue;
+        QString bn = fi.baseName();
+        if(bn == QStringLiteral("NOGREET"))
+            greetFileNoGreet = fi.absoluteFilePath();
+        else if(bn == QStringLiteral("MEDLEYDIR-INIT"))
+            greetFileDefault = fi.absoluteFilePath();
+        else if(bn == QStringLiteral("APPS-INIT"))
+            greetFileApps = fi.absoluteFilePath();
+    }
+    if(greetFileNoGreet.isNull())
+        throw(QStringLiteral("NoGreet INIT file (<MEDLEYDIR>/greetfiles/NOGREET[.LCOM]) either doesn't exist or is not readable"));
+    if(greetFileDefault.isNull())
+        throw(QStringLiteral("Default INIT file (<MEDLEYDIR>/greetfiles/MEDLEYDIR-INIT[.LCOM]) either doesn't exist or is not readable"));
+    if(greetFileApps.isNull())
         greetFileApps = greetFileDefault;
-
 }
 
 QString MedleyApp::figureOutMedleyDir(QString invokePath) {
@@ -160,6 +176,8 @@ QString MedleyApp::testMaikoExecDir(QString maikoDirCandidate) {
 
 void MedleyApp::runMedley() {
 
+
+
     Config *save = MedleyApp::runConfig;
     MedleyApp::runConfig = new Config(*MedleyApp::config);
     if(save != nullptr) delete save;
@@ -176,6 +194,7 @@ void MedleyApp::runMedley() {
     ldeEnv.insert("MAIKODIR", maikoDir.absolutePath());
     ldeEnv.insert("LOGINDIR", config->logindir.value());
     ldeEnv.insert("LDESRCESYSOUT", config->sysout.value());
+
     ldeEnv.insert("LDEDESTSYSOUT", config->vmem.value());
     ldeEnv.insert("LDEINIT", config->greet.value());
     if(config->display.has_value()) ldeEnv.insert("DISPLAY", config->display.value());
@@ -184,6 +203,8 @@ void MedleyApp::runMedley() {
 
     ldeArgs << "-g" << config->geometry.value();
     ldeArgs << "-sc" << config->screensize.value();
+    QTextStream xout(stdout);
+    xout << "7777777777777777777777777777" << Qt::endl;
     if(config->noscroll.has_value() && config->noscroll.value())
         ldeArgs << "-noscroll";
     if(config->title.has_value())

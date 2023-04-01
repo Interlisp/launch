@@ -10,6 +10,7 @@ QStringList Config::sysoutTildes = QStringList("~apps") << "~full" << "~lisp" <<
 QRegularExpression Config::re_xOrX = QRegularExpression("[xX]");
 QRegularExpression Config::re_WxH = QRegularExpression("^[0-9]+[Xx][0-9]+$");
 QRegularExpression Config::re_ExceptAlphaNum = QRegularExpression("[^0-9a-zA-Z]");
+QRegularExpression Config::re_VersionedFile = QRegularExpression(".~[0-9]+~$");
 
 Config::Config() : Config(nullptr, false){
 
@@ -521,7 +522,7 @@ void Config::prepareConfigForRunMedley()
                          + (id.has_value() ? ("_" + id.value()) : QStringLiteral(""))
                          + ".virtualmem";
         }
-        QFileInfo fi = QFileInfo(sv);
+        QFileInfo fi = QFileInfo(sysout.value());
         if(! (fi.exists() && fi.isFile() && fi.isReadable()))
                 throw(QStringLiteral("Sysout file (%1) either doesn't exist, is a directory, or is not readable.").arg(sysout.value()));
     }
@@ -551,8 +552,6 @@ void Config::prepareConfigForRunMedley()
         }
     }
 
-
-
     figureOutGeometries(true);
 
 }
@@ -565,9 +564,13 @@ struct Config::Geometries Config::figureOutGeometries(bool setConfig)
 {
     int geo_width = DEFAULT_GEO_WIDTH;
     int geo_height = DEFAULT_GEO_HEIGHT;
-    int screensize_width = DEFAULT_SCREENSIZE_WIDTH;
-    int screensize_height = DEFAULT_SCREENSIZE_HEIGHT;
     int scroll_width = (noscroll.has_value() && noscroll.value()) ? DEFAULT_SCROLLBAR_WIDTH : 0;
+    int screensize_width = DEFAULT_SCREENSIZE_WIDTH - scroll_width;
+    int screensize_height = DEFAULT_SCREENSIZE_HEIGHT - scroll_width;
+
+    if(!geometry.has_value() && !screensize.has_value()) {
+        if(setConfig) geometry = QStringLiteral("%1x%2").arg(geo_width).arg(geo_height);
+    }
 
     if(geometry.has_value()) {
         if(geometry.value().contains(re_WxH)) {

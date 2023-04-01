@@ -8,7 +8,7 @@
 #include <QProcessEnvironment>
 
 #include "config.h"
-#include "MainWindow.h"
+#include "mainwindow.h"
 
 class MedleyApp
 {
