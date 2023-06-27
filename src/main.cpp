@@ -1,11 +1,11 @@
+#include "apps.h"
+#include "main.h"
+
 #include <QApplication>
 #include <QStringList>
 #include <QFileInfo>
 #include <QTextStream>
 #include <QRegularExpression>
-
-#include "apps.h"
-#include "main.h"
 
 static QRegularExpression isGuiArg = QRegularExpression("^-{1,2}gui$");
 static QRegularExpression isCliArg = QRegularExpression("^-{1,2}cli$");
@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
             isGuiApp = (baseName.at(0) == QChar('g'));
         }
     // DEBUG
-    isGuiApp=true;
+    isGuiApp=false;
     }
 
     // Start the app

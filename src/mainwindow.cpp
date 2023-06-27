@@ -1,8 +1,8 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include "configfile.h"
+#include "medleyapp.h"
 #include <iostream>
-#include "apps.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -129,7 +129,6 @@ void MainWindow::resetUI() {
 //
 void MainWindow::configureUI() {
 
-    MedleyApp *app = MedleyApp::app;
     Config *config = MedleyApp::config;
 
     if(config->interlisp_exec.has_value() && config->interlisp_exec.value()) {
@@ -235,7 +234,7 @@ void MainWindow::configureUI() {
         ui->LoginDirLE->setText(config->logindir.value());
         ui->LoginDirCB->setChecked(true);
     }
-    else ui->LoginDirLE->setText(app->defaultLoginDir.absolutePath());
+    else ui->LoginDirLE->setText(config->defaultLoginDir.absolutePath());
 }
 
 
@@ -251,7 +250,6 @@ void MainWindow::RunMedleyButton_clicked()
         MedleyApp::app->runMedley();
     } catch(QString err_msg) {
         QMessageBox::critical(nullptr, "Error", err_msg);
-        ;
     }
 }
 
@@ -293,9 +291,9 @@ void MainWindow::updateSysout()
 
 void MainWindow::updateSysoutDependantUI() {
     if(ui->AppsSysoutRB->isChecked())
-        ui->GreetDefaultLabel->setText(MedleyApp::app->greetFileApps);
+        ui->GreetDefaultLabel->setText(MedleyApp::config->greetFileApps);
     else
-        ui->GreetDefaultLabel->setText(MedleyApp::app->greetFileDefault);
+        ui->GreetDefaultLabel->setText(MedleyApp::config->greetFileDefault);
     ui->GreetGB->setDisabled(ui->ResumeRB->isChecked());
 }
 
@@ -478,9 +476,10 @@ void MainWindow::ResetButton_clicked()
 
 void MainWindow::RestoreButton_clicked()
 {
-    QStringList *argList = ConfigFile().readConfig();
     delete MedleyApp::config;
-    MedleyApp::config = new Config(argList);
+    MedleyApp::config = new Config();
+    QStringList *argList = ConfigFile().readConfig();
+    MedleyApp::config->processArgList(argList, true);
     delete argList;
     resetUI();
     configureUI();

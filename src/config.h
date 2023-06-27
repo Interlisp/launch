@@ -1,11 +1,14 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "mainwindow.h"
+
 #include <optional>
 #include <QChar>
 #include <QString>
 #include <QStringList>
 #include <QTextStream>
+#include <QDir>
 
 #define DEFAULT_TITLE "Medley Interlisp"
 #define DEFAULT_DISPLAY ":0"
@@ -21,9 +24,9 @@ class Config
 {
 public:
     Config();
-    Config(QStringList *argList, bool fromConfigFile = false);
     Config(Config &config);
     ~Config();
+    void determineContext();
     void processArgList(QStringList *argList, bool fromConfigFile);
     void toTextStream(QTextStream &out, QChar separator);
     void prepareConfigForRunMedley();
@@ -35,7 +38,7 @@ public:
         Geometries(int gw, int gh, int sw, int sh): gw(gw), gh(gh), sw(sw), sh(sh) {}
     };
     struct Geometries figureOutGeometries(bool setConfig = false);
-
+    // -a (reserved for synomym of --sysout ~apps)
     // -b (Windows only)
     std::optional<bool> background;
     // -c
@@ -44,12 +47,16 @@ public:
     std::optional<QString> display;
     // -e
     std::optional<bool> interlisp_exec;
+    // -f (reserved for synomym of --sysout ~full)
     // -g
     std::optional<QString> geometry;
+    // -h (reserved for synonym of --help)
     // -i
     std::optional<QString> id;
+    // -j (available)
     // -k
     std::optional<QString> vmem;
+    // -l (reserved for synomym of --sysout ~lisp)
     // -m
     std::optional<int> mem;
     // -n
@@ -58,18 +65,48 @@ public:
     std::optional<QString> greet;
     // -p (Windows only)
     std::optional<int> port;
+    // -q (available)
+    // -r (reserved for synonym of --sysout ~resume)
     // -s
     std::optional<QString> screensize;
     // -t
     std::optional<QString> title;
+    // -u (Windows only)
+    std::optional<bool> update;
     // -v
     std::optional<bool> vnc;
-    // -w (WSL only)
-    std::optional<bool> wsl;
+    // -w (Windows only)
+    std::optional<bool> use_wsl;
     // -x
     std::optional<QString> logindir;
     // -y
     std::optional<QString> sysout;
+    // -z (reserved as synonym for --man
+    // -draft
+    std::optional<QString> dockerTag;
+
+
+    bool isGuiApp;
+    bool isLinux;
+    bool isWSL;
+    uint8_t wslVersion;
+    bool isDocker;
+    bool isMacOS;
+    bool isMacOSBundle;
+    bool isWindows;
+    QString osString;
+    QString arch;
+
+    QDir medleyDir;
+    QDir maikoDir;
+    QDir maikoExecDir;
+    QDir defaultLoginDir;
+    QString greetFileNoGreet;
+    QString greetFileDefault;
+    QString greetFileApps;
+    QDir invokeDir;
+    MainWindow *mainWindow;
+    QDir ilDir;
 
     static QRegularExpression re_xOrX;
     static QRegularExpression re_WxH;

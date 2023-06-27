@@ -1,10 +1,12 @@
 #include "config.h"
-#include "apps.h"
+#include "mainwindow.h"
+
 #include <QFileInfo>
 #include <QFileInfo>
 #include <QDir>
 #include <QMessageBox>
 #include <QRegularExpression>
+#include <QProcessEnvironment>
 
 QStringList Config::sysoutTildes = QStringList("~apps") << "~full" << "~lisp" << "~resume" << "~default";
 QRegularExpression Config::re_xOrX = QRegularExpression("[xX]");
@@ -12,23 +14,8 @@ QRegularExpression Config::re_WxH = QRegularExpression("^[0-9]+[Xx][0-9]+$");
 QRegularExpression Config::re_ExceptAlphaNum = QRegularExpression("[^0-9a-zA-Z]");
 QRegularExpression Config::re_VersionedFile = QRegularExpression(".~[0-9]+~$");
 
-Config::Config() : Config(nullptr, false){
-
-}
-
-constexpr uint32_t hash(const char* data) noexcept{
-    uint32_t hash = 5381;
-    size_t size = 0;
-    for(; size<=4096; ++size) { if (data[size] == 0) break; }
-
-    for(const char *c = data; c < data + size; ++c)
-        hash = ((hash << 5) + hash) + (unsigned char) *c;
-
-    return hash;
-}
-
-Config::Config(QStringList *argList, bool fromConfigFile) {
-
+Config::Config()
+{
     //
     // Defaults
     //
@@ -61,12 +48,30 @@ Config::Config(QStringList *argList, bool fromConfigFile) {
     // -v
     vnc = std::nullopt;
     // -w
-    wsl= std::nullopt;
+    use_wsl= std::nullopt;
     // -y
     sysout = QStringLiteral("~resume");
+    // -draft
+    dockerTag = "latest";
 
-    if(argList)
-        processArgList(argList, fromConfigFile);
+ 1  medleyDir = QDir();
+
+    greetFileDefault = QString();
+    greetFileNoGreet = QString();
+    greetFileApps = QString();
+    mainWindow = nullptr;
+    ilDir = QDir();
+
+    isGuiApp = false;
+    isLinux = false;
+    isWSL = false;
+    wslVersion = 0;
+    isDocker = false;
+    isMacOS = false;
+    isMacOSBundle = false;
+    isWindows = false;
+    osString = QString();
+    arch = QString();
 
 }
 
@@ -86,13 +91,77 @@ Config::Config(Config &config) {
     screensize = config.screensize;
     title = config.title;
     vnc = config.vnc;
-    wsl = config.wsl;
+    use_wsl = config.use_wsl;
     logindir = config.logindir;
     sysout = config.sysout;
+    dockerTag = config.dockerTag;
 
+    medleyDir = config.medleyDir;noscroll
+    maikoDir = config.maikoDir;
+    maikoExecDir = config.maikoExecDir;
+    defaultLoginDir = config.defaultLoginDir;
+    greetFileNoGreet = config.greetFileNoGreet;
+    greetFileDefault = config.greetFileDefault;
+    greetFileApps = config.greetFileApps;
+    invokeDir = config.invokeDir;
+    mainWindow = config.mainWindow;
+    ilDir = config.ilDir;
+
+    isGuiApp = config.isGuiApp;
+    isLinux = config.isLinux;
+    isWSL = config.isWSL;
+    wslVersion = config.wslVersion;
+    isDocker = config.isDocker;
+    isMacOS = config.isMacOS;
+    isMacOSBundle = config.isMacOSBundle;
+    isWindows = config.isWindows;
+    osString = config.osString;
+    arch = config.arch;
 }
 
 Config::~Config() {
+}
+
+constexpr uint32_t hash(const char* data) noexcept{
+    uint32_t hash = 5381;
+    size_t size = 0;
+    for(; size<=4096; ++size) { if (data[size] == 0) break; }
+
+    for(const char *c = data; c < data + size; ++c)
+        hash = ((hash << 5) + hash) + (unsigned char) *c;
+
+    return hash;
+}
+
+void Config::determineContext() {
+    arch = QSysInfo::currentCpuArchitecture();
+#ifdef Q_OS_LINUX
+    isLinux = true;
+    osString = QStringLiteral("linux");
+    if(! QProcessEnvironment::systemEnvironment().value(QStringLiteral("MEDLEY_DOCKER_BUILD_DATE")).isNull())
+        isDocker = true;
+    else {
+        QFile f("/proc/sys/kernel/osrelease");
+        QString s(f.readAll());
+        if(s.contains("wsl", Qt::CaseInsensitive)) {
+            isWSL = true;
+            wslVersion = 2;
+        }
+        else if(s.contains("microsoft", Qt::CaseInsensitive)) {
+            isWSL = true;
+            wslVersion = 1;
+#ifndef Q_PROCESSOR_X86_64
+            throw("Running Medley on WSL1 requires an x86_64-based PC.");
+#endif
+        }
+    }
+#elif Q_OS_MACOS
+    isMacOS = true;
+    osString = QStringLiteral("darwin");
+#elif Q_OS_WINDOWS
+    isWindows = true;
+    osString = QStringLiteral("win");
+#endif  /* Q_OS */
 }
 
 void Config::processArgList(QStringList *argList, bool fromConfigFile) {
@@ -120,7 +189,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
         // "Regular args
         case hash("-a"):
         case hash("--apps"):
-            this->sysout = QStringLiteral("~apps");
+            sysout = QStringLiteral("~apps");
         break;
 
         case hash("-b"):
@@ -147,7 +216,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     /* TODO: do some format checking on arg2 here */
-                    this->display = arg2.value();
+                    display = arg2.value();
                 }
                 idx++;
             }
@@ -157,12 +226,12 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
         case hash("-e-"):
         case hash("--interlisp"):
         case hash("--interlisp-"):
-            if(arg1.back() != QChar('-')) this->interlisp_exec = true;
+            if(arg1.back() != QChar('-')) interlisp_exec = true;
         break;
 
         case hash("-f"):
         case hash("--full"):
-            this->sysout = QStringLiteral("~full");
+            sysout = QStringLiteral("~full");
             break;
 
         case hash("-g"):
@@ -170,7 +239,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     /* TODO: do some format checking on arg2 here */
-                    this->geometry = arg2.value();
+                    geometry = arg2.value();
                 }
                 idx++;
             }
@@ -186,7 +255,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     /* TODO: do some format checking on arg2 here */
-                    this->id = arg2.value();
+                    id = arg2.value();
                 }
                 idx++;
             }
@@ -197,7 +266,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     //checkFileWriteableOrCreatable(arg1, arg2);
-                    this->vmem = arg2.value();
+                    vmem = arg2.value();
                 }
                 idx++;
             }
@@ -205,14 +274,14 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
 
         case hash("-l"):
         case hash("--lisp"):
-            this->sysout = QStringLiteral("~lisp");
+            sysout = QStringLiteral("~lisp");
         break;
 
         case hash("-m"):
         case hash("--mem"):
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
-                    this->mem = arg2.value().toInt();
+                    mem = arg2.value().toInt();
                 }
                 idx++;
             }
@@ -222,17 +291,17 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
         case hash("-n-"):
         case hash("--noscroll"):
         case hash("--noscroll-"):
-            if(arg1.back() != QChar('-')) this->noscroll = true;
+            if(arg1.back() != QChar('-')) noscroll = true;
         break;
 
         case hash("-o"):
         case hash("--greet"):
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~n")) || (arg2 == QStringLiteral("~none")))) {
-                    this->greet = QStringLiteral("~none");
+                    greet = QStringLiteral("~none");
                 } else if (! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     // checkFileReadable(arg1 arg2);
-                    this->greet = arg2.value();
+                    greet = arg2.value();
                 }
                 idx++;
             }
@@ -245,7 +314,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
 
         case hash("-r"):
         case hash("--resume"):
-            this->sysout = QStringLiteral("~resume");
+            sysout = QStringLiteral("~resume");
         break;
 
         case hash("-s"):
@@ -253,7 +322,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     /* TODO: do some format checking on arg2 here */
-                    this->screensize = arg2.value();
+                    screensize = arg2.value();
                 }
                 idx++;
             }
@@ -264,7 +333,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     /* TODO: do some format checking on arg2 here */
-                    this->title = arg2.value();
+                    title = arg2.value();
                 }
                 idx++;
             }
@@ -279,7 +348,10 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
         case hash("-v-"):
         case hash("-vnc"):
         case hash("-vnc-"):
-            if(arg1.back() != QChar('-')) this->vnc = true;
+            if(isWSL) {
+                if(arg1.back() == QChar('-')) vnc = false;
+                else vnc = true;
+            }
         break;
 
         case hash("-w"):
@@ -292,7 +364,7 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             if(checkForDashOrEnd(arg1, arg2)) {
                 if(! ((arg2 == QStringLiteral("~d")) || (arg2 == QStringLiteral("~default")))) {
                     /* TODO: do some format checking on arg2 here */
-                    this->logindir = arg2.value();
+                    logindir = arg2.value();
                 }
                 idx++;
             }
@@ -306,35 +378,35 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
                 case hash("~a"):
                 case hash("~apps"):
                 case hash("~~apps"):
-                    this->sysout = QStringLiteral("~apps");
+                    sysout = QStringLiteral("~apps");
                 break;
 
                 case hash("~d"):
                 case hash("~default"):
                 case hash("~~default"):
-                    this->sysout = QStringLiteral("~default");
+                    sysout = QStringLiteral("~default");
                 break;
 
                 case hash("~f"):
                 case hash("~full"):
                 case hash("~~full"):
-                    this->sysout = QStringLiteral("~full");
+                    sysout = QStringLiteral("~full");
                 break;
 
                 case hash("~l"):
                 case hash("~lisp"):
                 case hash("~~lisp"):
-                    this->sysout = QStringLiteral("~lisp");
+                    sysout = QStringLiteral("~lisp");
                 break;
 
                 case hash("~r"):
                 case hash("~resume"):
                 case hash("~~resume"):
-                    this->sysout = QStringLiteral("~resume");
+                    sysout = QStringLiteral("~resume");
                 break;
 
                 default:
-                    this->sysout = arg2.value();
+                    sysout = arg2.value();
                 break;
 
                 }
@@ -347,6 +419,12 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
             /* medley command line arg - but should not be in config file - ignore */
         break;
 
+        case hash("-draft"):
+        case hash("--draft"):
+            draft = "draft";
+        break;
+
+
         default:
             /* Unknow argument - ignore */
         break;
@@ -358,83 +436,91 @@ void Config::processArgList(QStringList *argList, bool fromConfigFile) {
 
 void Config::toTextStream(QTextStream &out, QChar separator) {
 
-    if(this->background.has_value() && this->background.value()) {
-        out << "--background" << separator;
+    if(isWindows) {
+        if(background.has_value() && background.value()) {
+            out << "--background" << separator;
+            out.flush();
+        }
+    }
+
+    if(display.has_value()) {
+        out << "--display " << display.value() << separator;
         out.flush();
     }
 
-    if(this->display.has_value()) {
-        out << "--display " << this->display.value() << separator;
-        out.flush();
-    }
-
-    if(this->interlisp_exec.has_value() && this->interlisp_exec.value()) {
+    if(interlisp_exec.has_value() && interlisp_exec.value()) {
         out << "--interlisp" << separator;
         out.flush();
     }
 
-    if(this->geometry.has_value()) {
-        out << "--geometry " << this->geometry.value() << separator;
+    if(geometry.has_value()) {
+        out << "--geometry " << geometry.value() << separator;
         out.flush();
     }
 
-    if(this->id.has_value()) {
-        out << "--id \"" << this->id.value() << "\"" << separator;
+    if(id.has_value()) {
+        out << "--id \"" << id.value() << "\"" << separator;
         out.flush();
     }
 
-    if(this->vmem.has_value()) {
-        out << "--vmem \"" << this->vmem.value() << "\"" << separator;
+    if(vmem.has_value()) {
+        out << "--vmem \"" << vmem.value() << "\"" << separator;
         out.flush();
     }
 
-    if(this->mem.has_value()) {
-        out << "--mem " << this->mem.value() << separator;
+    if(mem.has_value()) {
+        out << "--mem " << mem.value() << separator;
         out.flush();
     }
 
-    if(this->noscroll.has_value() && this->noscroll.value()) {
+    if(noscroll.has_value() && noscroll.value()) {
         out << "--noscroll" << separator;
         out.flush();
     }
 
-    if(this->greet.has_value()) {
-        out << "--greet \"" << this->greet.value() << "\"" << separator;
+    if(greet.has_value()) {
+        out << "--greet \"" << greet.value() << "\"" << separator;
         out.flush();
     }
 
-    if(this->port.has_value()) {
-        out << "--port " << this->port.value() << separator;
+    if(isWindows) {
+        if(port.has_value()) {
+            out << "--port " << port.value() << separator;
+            out.flush();
+        }
+    }
+
+    if(screensize.has_value()) {
+        out << "--screensize " << screensize.value() << separator;
         out.flush();
     }
 
-    if(this->screensize.has_value()) {
-        out << "--screensize " << this->screensize.value() << separator;
+    if(title.has_value()) {
+        out << "--title \"" << title.value() << "\"" << separator;
         out.flush();
     }
 
-    if(this->title.has_value()) {
-        out << "--title \"" << this->title.value() << "\"" << separator;
+    if(isWSL) {
+        if(vnc.has_value() && vnc.value()) {
+            out << "--vnc" << separator;
+            out.flush();
+        }
+    }
+
+    if(isWindows) {
+        if(use_wsl.has_value() && use_wsl.value()) {
+            out << "--wsl" << separator;
+            out.flush();
+        }
+    }
+
+    if(logindir.has_value()) {
+        out << "--logindir \"" << logindir.value() << "\"" << separator;
         out.flush();
     }
 
-    if(this->vnc.has_value() && this->vnc.value()) {
-        out << "--vnc" << separator;
-        out.flush();
-    }
-
-    if(this->wsl.has_value() && this->wsl.value()) {
-        out << "--wsl" << separator;
-        out.flush();
-    }
-
-    if(this->logindir.has_value()) {
-        out << "--logindir \"" << this->logindir.value() << "\"" << separator;
-        out.flush();
-    }
-
-    if(this->sysout.has_value()) {
-        out << "--sysout \"" << this->sysout.value() << "\"" << separator;
+    if(sysout.has_value()) {
+        out << "--sysout \"" << sysout.value() << "\"" << separator;
         out.flush();
     }
 
@@ -458,9 +544,9 @@ void Config::prepareConfigForRunMedley()
         if(id.has_value()) {
             QString idv = id.value();
             if(idv == QStringLiteral("~."))
-                id = MedleyApp::app->medleyDir.dirName();
+                id = medleyDir.dirName();
             else if(idv == QStringLiteral("~..")) {
-                QDir tmp_qdir = QDir(MedleyApp::app->medleyDir);
+                QDir tmp_qdir = QDir(medleyDir);
                 tmp_qdir.cdUp();
                 id = tmp_qdir.dirName();
             }
@@ -469,7 +555,7 @@ void Config::prepareConfigForRunMedley()
     }
     {
         if(!logindir.has_value())
-            logindir = MedleyApp::app->defaultLoginDir.absolutePath();
+            logindir = defaultLoginDir.absolutePath();
         QString ldv = logindir.value();
         QFileInfo fi = QFileInfo(ldv);
         if(fi.exists()) {
@@ -485,12 +571,12 @@ void Config::prepareConfigForRunMedley()
     {
         if(!greet.has_value() || (greet.value() == QStringLiteral("~default"))) {
             if(sysout.has_value() && (sysout == QStringLiteral("~apps")))
-                greet = MedleyApp::app->greetFileApps;
-            else greet = MedleyApp::app->greetFileDefault;
+                greet = greetFileApps;
+            else greet = greetFileDefault;
         } else {
             QString gv = greet.value();
             if(gv == QStringLiteral("~none"))
-                greet = MedleyApp::app->greetFileNoGreet;
+                greet = greetFileNoGreet;
             else {
                 QFileInfo fi = QFileInfo(gv);
                 if(!fi.exists()) {
@@ -508,7 +594,7 @@ void Config::prepareConfigForRunMedley()
         if(!sysout.has_value())
             sysout = QStringLiteral("~full");
         QString sv = sysout.value();
-        QString mdpath = MedleyApp::app->medleyDir.absolutePath();
+        QString mdpath = medleyDir.absolutePath();
         if(sysoutTildes.contains(sv)) {
             if(sv == QStringLiteral("~apps"))
                     sysout = mdpath + "/loadups/apps.sysout" ;
@@ -529,20 +615,26 @@ void Config::prepareConfigForRunMedley()
 
     {
         if(!vmem.has_value()) {
-            vmem = QDir(logindir.value()).absolutePath()
-                     + "/vmem/lisp"
-                     + (id.has_value() ? ("_" + id.value()) : QStringLiteral(""))
-                     + ".virtualmem";
+            vmem = QProcessEnvironment::systemEnvironment().value(QStringLiteral("LDEDESTSYSOUT"));
+            if (vmem.value().isNull())
+                vmem = QDir(logindir.value()).absolutePath()
+                         + "/vmem/lisp"
+                         + (id.has_value() ? ("_" + id.value()) : QStringLiteral(""))
+                         + ".virtualmem";
         }
         QString vmv = vmem.value();
         QFileInfo fi = QFileInfo(vmv);
         if(!fi.exists()) {
-            QFile file = QFile(fi.absolutePath());
+            QFile file = QFile(fi.absoluteFilePath());
+            QDir dir = QDir(fi.absolutePath());
+            if(!dir.exists() && !dir.mkpath(dir.absolutePath()))
+                throw(QStringLiteral("Virtual memory file (%1) does not exist and cannot be created (1)").arg(vmv));
             if(file.open(QIODeviceBase::WriteOnly, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
                 file.close();
                 file.remove();
             }
-            else throw(QStringLiteral("Virtual memory file (%1) does not exist and con not be created").arg(vmv));
+            else
+                throw(QStringLiteral("Virtual memory file (%1) does not exist and cannot be created (2)").arg(vmv));
         }
         else if(!fi.isWritable()) {
             throw(QStringLiteral("Virtual memory file (%1) exists, but is not writable").arg(vmv));

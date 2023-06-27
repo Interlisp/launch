@@ -9,14 +9,16 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
 
 set(PROJECT_SOURCES
         src/main.h
         src/main.cpp
         src/apps.h
         src/apps.cpp
+        src/medleyapp.h
+        src/medleyapp.cpp
         src/mainwindow.cpp
         src/mainwindow.h
         src/mainwindow.ui
@@ -24,6 +26,12 @@ set(PROJECT_SOURCES
         src/configfile.cpp
         src/config.h
         src/config.cpp
+        src/runner.h
+        src/runner.cpp
+        src/runner_docker.h
+        src/runner_docker.cpp
+        src/runner_lde.h
+        src/runner_lde.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -50,6 +58,7 @@ else()
 endif()
 
 target_link_libraries(launch PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(launch PRIVATE Qt${QT_VERSION_MAJOR}::Network)
 
 set_target_properties(launch PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com
